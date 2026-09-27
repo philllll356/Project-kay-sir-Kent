@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+.venv*/
+
+__pycache__/
+*.py[cod]
+
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/.DS_Store

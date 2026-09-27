@@ -132,6 +132,12 @@ class QRResponse(BaseModel):
     checkin_url: str
 
 
+class PersonalCheckInOut(BaseModel):
+    event_id: int
+    event_title: str
+    attendee: AttendeeOut
+
+
 class EventPublicOut(BaseModel):
     id: int
     title: str
@@ -140,6 +146,7 @@ class EventPublicOut(BaseModel):
     start_time: datetime
     end_time: Optional[datetime]
     status: EventStatus
+    attendees: list[AttendeeOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

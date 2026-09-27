@@ -5,6 +5,7 @@ python-multipart
 qrcode[pil]
 pyjwt
 passlib[bcrypt]
+bcrypt==4.0.1
 python-dotenv
 firebase-admin
 aiosmtplib

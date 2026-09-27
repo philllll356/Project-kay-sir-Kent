@@ -9,6 +9,7 @@ from backend.auth import get_current_coordinator, get_event_for_coordinator
 from backend.database import get_db
 from backend.models.db_models import Coordinator, Attendee
 from backend.models.schemas import AttendeeCreate, AttendeeBulkCreate, AttendeeOut
+from backend.services.qr_service import generate_qr_token
 
 router = APIRouter(prefix="/api/events", tags=["attendees"])
 
@@ -38,7 +39,7 @@ def create_attendee(
     """Add a single attendee to the event's attendee list."""
     event = get_event_for_coordinator(db, event_id, current_coordinator)
 
-    db_attendee = Attendee(**attendee.model_dump(), event_id=event_id)
+    db_attendee = Attendee(**attendee.model_dump(), event_id=event_id, qr_token=generate_qr_token())
     db.add(db_attendee)
     try:
         db.commit()
@@ -62,7 +63,7 @@ def create_attendees_bulk(
 
     added_attendees = []
     for attendee_data in data.attendees:
-        db_attendee = Attendee(**attendee_data.model_dump(), event_id=event_id)
+        db_attendee = Attendee(**attendee_data.model_dump(), event_id=event_id, qr_token=generate_qr_token())
         db.add(db_attendee)
         try:
             db.commit()
@@ -104,6 +105,7 @@ def upload_csv(
             email=row.get("email", "").strip() or None,
             phone=row.get("phone", "").strip() or None,
             student_id=row.get("student_id", "").strip() or None,
+            qr_token=generate_qr_token(),
         )
         db.add(db_attendee)
         try:

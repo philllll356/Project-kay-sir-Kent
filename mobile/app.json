@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "QR Event",
+    "slug": "qr-event",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "qrevent",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow QR Event to use your camera to scan event QR codes.",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "expo-notifications"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.qrevent"
+    },
+    "android": {
+      "package": "com.example.qrevent"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "replace-with-your-eas-project-id"
+      }
+    }
+  }
+}

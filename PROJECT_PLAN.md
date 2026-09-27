@@ -15,8 +15,8 @@ We are building a **QR-based event system** as a **native mobile app** (Android 
 | Feature | Description |
 |---------|-------------|
 | **Event Book** | Coordinator creates events and pre-loads attendee lists before the event |
-| **QR Codes** | System auto-generates a unique QR code per event for check-in |
-| **QR Scanning** | Attendees scan the QR with the app camera to check in |
+| **QR Codes** | System generates a unique personal QR code for every attendee |
+| **QR Scanning** | Coordinator scans an attendee's personal QR to check them in |
 | **Push Notifications** | Coordinator taps one button to notify **all attendees** at once |
 | **Check-in Tracking** | See who has checked in vs who is still pending |
 | **Attendance Report** | Summary of check-ins and notification delivery |
@@ -101,9 +101,9 @@ We are building a **QR-based event system** as a **native mobile app** (Android 
 
 ### Attendee
 
-1. Open app → tap **Scan QR** (no login needed)
-2. Point camera at event QR code
-3. Select their name from the pre-loaded list → **Check In**
+1. Receive or open their personal QR code
+2. Show the QR code to the coordinator at the event
+3. Coordinator scans the code → **Check In**
 4. Allow notification permission when prompted
 5. Receive push reminder when coordinator taps Notify All
 
@@ -179,7 +179,10 @@ We are building a **QR-based event system** as a **native mobile app** (Android 
 | POST | `/api/events/{id}/attendees` | Add/import attendees |
 | GET | `/api/events/{id}/attendees` | List attendees |
 | GET | `/api/events/{id}/qr` | Get QR code image |
+| GET | `/api/events/{id}/attendees/{attendee_id}/qr` | Get an attendee's personal QR |
 | POST | `/api/checkin/{qr_token}` | Attendee check-in via QR |
+| GET | `/api/checkin/attendee/{attendee_qr_token}` | Look up attendee from personal QR |
+| POST | `/api/checkin/attendee/{attendee_qr_token}` | Check in by personal QR |
 | POST | `/api/attendees/{id}/register-device` | Save FCM device token |
 | POST | `/api/events/{id}/notify-all` | **Push notify all attendees** |
 | GET | `/api/events/{id}/notifications` | Notification history |
@@ -244,10 +247,10 @@ for our project/
 - [ ] Build Add Attendees screen (manual entry + CSV import)
 - [ ] Build Event Book list screen (all coordinator events)
 - [ ] Build Event Detail screen (attendee list, check-in stats)
-- [ ] Implement QR code generation (backend + display in app)
+- [x] Implement event and personal QR code generation (backend + display in app)
 - [ ] Build Scan QR screen with camera (`expo-camera`)
-- [ ] Build Check-In screen (pick name from pre-loaded list)
-- [ ] Wire up check-in API
+- [x] Build personal QR check-in screen
+- [x] Wire up event and personal check-in APIs
 
 **Goal:** Full event lifecycle — create, add attendees, generate QR, scan, check in.
 

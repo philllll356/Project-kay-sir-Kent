@@ -5,9 +5,22 @@ from datetime import datetime, timezone
 
 from backend.database import get_db
 from backend.models.db_models import Event, Attendee, DeviceToken, CheckInStatus
-from backend.models.schemas import CheckInRequest, AttendeeOut, EventPublicOut, DeviceTokenRegister
+from backend.models.schemas import CheckInRequest, AttendeeOut, EventPublicOut, DeviceTokenRegister, PersonalCheckInOut
 
 router = APIRouter(prefix="/api/checkin", tags=["checkin"])
+
+
+def _attendee_to_out(attendee: Attendee, db: Session) -> dict:
+    has_token = db.query(DeviceToken).filter(
+        DeviceToken.attendee_id == attendee.id,
+        DeviceToken.is_active == True,
+    ).first() is not None
+    attendee_dict = {
+        column.name: getattr(attendee, column.name)
+        for column in attendee.__table__.columns
+    }
+    attendee_dict["has_device_token"] = has_token
+    return attendee_dict
 
 @router.get("/{qr_token}", response_model=EventPublicOut)
 def get_event_by_qr(qr_token: str, db: Session = Depends(get_db)):
@@ -17,17 +30,7 @@ def get_event_by_qr(qr_token: str, db: Session = Depends(get_db)):
     
     attendees_out = []
     for attendee in event.attendees:
-        has_token = db.query(DeviceToken).filter(
-            DeviceToken.attendee_id == attendee.id, 
-            DeviceToken.is_active == True
-        ).first() is not None
-        
-        attendee_dict = {
-            column.name: getattr(attendee, column.name) 
-            for column in attendee.__table__.columns
-        }
-        attendee_dict['has_device_token'] = has_token
-        attendees_out.append(attendee_dict)
+        attendees_out.append(_attendee_to_out(attendee, db))
     
     event_dict = {
         column.name: getattr(event, column.name) 
@@ -36,6 +39,18 @@ def get_event_by_qr(qr_token: str, db: Session = Depends(get_db)):
     event_dict['attendees'] = attendees_out
     
     return event_dict
+
+
+@router.get("/attendee/{attendee_qr_token}", response_model=PersonalCheckInOut)
+def get_attendee_by_qr(attendee_qr_token: str, db: Session = Depends(get_db)):
+    attendee = db.query(Attendee).filter(Attendee.qr_token == attendee_qr_token).first()
+    if not attendee:
+        raise HTTPException(status_code=404, detail="Attendee QR code not found")
+    return PersonalCheckInOut(
+        event_id=attendee.event_id,
+        event_title=attendee.event.title,
+        attendee=_attendee_to_out(attendee, db),
+    )
 
 @router.post("/{qr_token}", response_model=AttendeeOut)
 def check_in_attendee(qr_token: str, request: CheckInRequest, db: Session = Depends(get_db)):
@@ -71,6 +86,21 @@ def check_in_attendee(qr_token: str, request: CheckInRequest, db: Session = Depe
     attendee_dict['has_device_token'] = has_token
     
     return attendee_dict
+
+
+@router.post("/attendee/{attendee_qr_token}", response_model=AttendeeOut)
+def check_in_attendee_by_qr(attendee_qr_token: str, db: Session = Depends(get_db)):
+    attendee = db.query(Attendee).filter(Attendee.qr_token == attendee_qr_token).first()
+    if not attendee:
+        raise HTTPException(status_code=404, detail="Attendee QR code not found")
+    if attendee.check_in_status == CheckInStatus.checked_in:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Attendee already checked in")
+
+    attendee.check_in_status = CheckInStatus.checked_in
+    attendee.checked_in_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(attendee)
+    return _attendee_to_out(attendee, db)
 
 @router.post("/register-device/{attendee_id}")
 def register_device(attendee_id: int, request: DeviceTokenRegister, db: Session = Depends(get_db)):

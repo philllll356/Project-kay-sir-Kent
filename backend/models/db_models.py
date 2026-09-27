@@ -64,6 +64,7 @@ class Attendee(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     student_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    qr_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     check_in_status: Mapped[CheckInStatus] = mapped_column(Enum(CheckInStatus), default=CheckInStatus.pending)
     checked_in_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
