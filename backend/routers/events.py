@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth import get_current_coordinator, get_event_for_coordinator
 from backend.database import get_db
-from backend.models.db_models import Coordinator, Event, CheckInStatus
+from backend.models.db_models import Coordinator, CoordinatorRole, Event, CheckInStatus
 from backend.models.schemas import EventCreate, EventUpdate, EventOut
 from backend.services.qr_service import generate_qr_token
 
@@ -42,7 +42,9 @@ def list_events(
     current: Coordinator = Depends(get_current_coordinator),
 ):
     """List all events for the current coordinator (the Event Book)."""
-    query = db.query(Event).filter(Event.coordinator_id == current.id)
+    query = db.query(Event)
+    if current.role != CoordinatorRole.admin:
+        query = query.filter(Event.coordinator_id == current.id)
     if status_filter:
         query = query.filter(Event.status == status_filter)
     events = query.order_by(Event.created_at.desc()).all()

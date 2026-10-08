@@ -10,7 +10,21 @@ export type Coordinator = {
   id: number;
   name: string;
   email: string;
+  role: "admin" | "host";
+  is_active: boolean;
 };
+
+export type AdminCoordinator = Coordinator & { event_count: number };
+
+export type AttendeeAccount = {
+  id: number;
+  full_name: string;
+  email: string;
+  student_id: string;
+  is_active: boolean;
+};
+
+export type AdminStudent = AttendeeAccount & { event_count: number };
 
 export type Event = {
   id: number;
@@ -34,6 +48,7 @@ export type Attendee = {
   email: string | null;
   phone: string | null;
   student_id: string | null;
+  account_id: number | null;
   check_in_status: CheckInStatus;
   checked_in_at: string | null;
   has_device_token: boolean;

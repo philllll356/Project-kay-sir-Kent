@@ -1,6 +1,6 @@
 # QR Event System
 
-QR Event System is a coordinator-focused event management application. It combines a FastAPI REST API, a SQLite database for local development, and an Expo/React Native app for event management, attendee registration, QR check-in, and notifications.
+QR Event System is a coordinator-focused event management application. It combines a FastAPI REST API, PostgreSQL for the active system database, and an Expo/React Native app for event management, attendee registration, QR check-in, and notifications. SQLite remains available as a local fallback.
 
 The current check-in flow uses one personal QR code per attendee. Coordinators display or share an attendee's QR code, scan it at the event, and confirm that specific attendee's check-in.
 
@@ -14,6 +14,7 @@ The current check-in flow uses one personal QR code per attendee. Coordinators d
 - Check-in status tracking and attendance reports
 - Optional push notifications through Firebase Cloud Messaging
 - Optional email fallback through SMTP
+- School mode with student accounts and permanent student QR codes
 - Interactive API documentation through FastAPI/Swagger
 
 ## Architecture
@@ -34,7 +35,7 @@ QR Event System/
 │   └── src/
 │       ├── api.ts              # Typed API client
 │       └── types.ts            # Frontend API types
-├── qrevent.db                  # Local SQLite database (development only)
+├── qrevent.db                  # SQLite fallback/migration source
 ├── .env.example                # Environment variable template
 ├── PROJECT_PLAN.md             # Product plan and implementation status
 └── requirements.txt            # Python dependencies
@@ -57,7 +58,7 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set a long random value for `JWT_SECRET` in `.env`. SQLite is used by default, so no separate database server is required for local development.
+Set a long random value for `JWT_SECRET` in `.env`. The checked-in example uses SQLite for zero-setup development; the current project workspace uses PostgreSQL with the restricted `qrevent_app` runtime role.
 
 Start the API:
 
@@ -70,6 +71,14 @@ The API is available at:
 - Local browser: <http://127.0.0.1:8000>
 - Swagger UI: <http://127.0.0.1:8000/docs>
 - OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
+
+For a real deployment, set `APP_ENV=production`, use a long random `JWT_SECRET`, configure `DATABASE_URL` with a managed PostgreSQL database, and set `CORS_ORIGINS` to the exact web origins that should access the API. The included `Dockerfile` runs the backend on port `8000`; deploy it behind HTTPS and point the mobile build's `EXPO_PUBLIC_API_URL` at the HTTPS API URL.
+
+The host event screen refreshes attendance automatically every five seconds, so check-ins from another phone appear without manually pressing Refresh.
+
+## Admin Center
+
+Set `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME` before starting the backend to create or promote the first administrator. The administrator can then use the **Admin Center** to create host accounts, activate/deactivate hosts and students, and review account event counts. Public host registration remains available for development; for a school rollout, use the Admin Center to provision host accounts.
 
 Use `127.0.0.1` or `localhost` in a browser. `0.0.0.0` is a server bind address, not a browser address.
 
@@ -111,6 +120,19 @@ The phone and computer must be on the same network, and Windows Firewall must al
 
 Each attendee has a server-generated token stored in the `attendees.qr_token` column. The token is not returned in normal attendee list responses. Existing databases are backfilled when the backend starts.
 
+## School account mode
+
+Students can register with a name, email, and student ID. The app creates one permanent QR code for each student account. A host adds the student to an event by email or student ID, then opens that event and selects **Scan student QR**. The backend checks that the scanned account is on that event's roster before marking the student checked in.
+
+School account endpoints:
+
+- `POST /api/auth/attendee/register` — create a student account
+- `POST /api/auth/attendee/login` — student login
+- `GET /api/auth/attendee/qr` — get the student's permanent QR image
+- `POST /api/events/{event_id}/checkin/account/{account_qr_token}` — verify roster membership and check in
+
+The existing event-attendee QR flow remains available as a fallback. Existing roster rows are automatically linked to a student account when the email or student ID matches.
+
 ## API overview
 
 All coordinator management endpoints require a JWT bearer token. Full request and response schemas are available in Swagger at `/docs`.
@@ -134,16 +156,48 @@ All coordinator management endpoints require a JWT bearer token. Full request an
 
 ## Database
 
-The default local database is `qrevent.db`. Open it with a SQLite Viewer extension in VS Code to inspect tables and records.
+The application is currently configured to use the local PostgreSQL database `qrevent`.
+The original SQLite file, `qrevent.db`, is kept as a local backup/source and is not
+deleted by the migration.
 
 Database structure is defined in `backend/models/db_models.py`. The application calls `init_db()` during startup, which creates missing tables and applies the current QR-token compatibility migration.
 
-For normal development:
+For normal development and testing:
 
 - Create or remove events and attendees through the app or API.
 - Change table structure in the SQLAlchemy models and migration logic.
 - Do not commit real attendee data or secrets.
-- Back up `qrevent.db` before manual database experiments.
+- Back up the database before manual database experiments.
+
+To repeat the one-time SQLite-to-PostgreSQL migration on another local copy,
+create a SQLite backup first, set `POSTGRES_URL` in the shell, and run:
+
+```powershell
+Copy-Item qrevent.db qrevent.sqlite.backup.db
+$env:POSTGRES_URL = "postgresql+psycopg://postgres:<password>@127.0.0.1:5432/qrevent"
+.\.venv\Scripts\python.exe scripts\migrate_sqlite_to_postgres.py
+```
+
+The migration refuses to merge into a PostgreSQL database that already has
+application data, preserves IDs, and validates foreign-key references.
+
+## Security baseline
+
+- Check-in changes and roster lookups require an authenticated host or administrator.
+- Student QR accounts must be active and must belong to the event roster.
+- Login endpoints are throttled and return generic credential errors to reduce account discovery.
+- Passwords are bcrypt-hashed, JWTs include issuer/audience validation, and request payloads are bounded.
+- The running application uses the restricted `qrevent_app` PostgreSQL role rather than the database administrator.
+- In production, set a strong `JWT_SECRET`, explicit `CORS_ORIGINS`, `TRUSTED_HOSTS`, and `ALLOW_PUBLIC_HOST_REGISTRATION=false`.
+
+## Google Sign-In
+
+The app supports Google OpenID Connect sign-in for already-provisioned host and
+student accounts. Add the allowed Google client IDs to `GOOGLE_CLIENT_IDS` in
+the backend `.env`, then add the matching platform client IDs to
+`mobile/.env` using [mobile/.env.example](mobile/.env.example). Google ID
+tokens are verified by the backend; they are never trusted from decoded client
+data alone. A Google email must match an existing account before it can sign in.
 
 ## Notifications
 

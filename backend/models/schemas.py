@@ -1,20 +1,20 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from backend.models.db_models import CheckInStatus, EventStatus, Platform
+from backend.models.db_models import CheckInStatus, CoordinatorRole, EventStatus, Platform
 
 
 class CoordinatorRegister(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8, max_length=72)
 
 
 class CoordinatorLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=72)
 
 
 class TokenResponse(BaseModel):
@@ -22,27 +22,34 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class GoogleSignInRequest(BaseModel):
+    id_token: str = Field(min_length=100, max_length=8192)
+    account_type: Literal["host", "attendee"]
+
+
 class CoordinatorOut(BaseModel):
     id: int
     name: str
     email: str
+    role: CoordinatorRole
+    is_active: bool
 
     model_config = {"from_attributes": True}
 
 
 class EventCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    description: Optional[str] = None
-    location: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=4000)
+    location: Optional[str] = Field(default=None, max_length=255)
     start_time: datetime
     end_time: Optional[datetime] = None
     status: EventStatus = EventStatus.draft
 
 
 class EventUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    location: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    location: Optional[str] = Field(default=None, max_length=255)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     status: Optional[EventStatus] = None
@@ -68,12 +75,12 @@ class EventOut(BaseModel):
 class AttendeeCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    student_id: Optional[str] = None
+    phone: Optional[str] = Field(default=None, max_length=50)
+    student_id: Optional[str] = Field(default=None, max_length=100)
 
 
 class AttendeeBulkCreate(BaseModel):
-    attendees: list[AttendeeCreate]
+    attendees: list[AttendeeCreate] = Field(max_length=500)
 
 
 class AttendeeOut(BaseModel):
@@ -83,6 +90,7 @@ class AttendeeOut(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     student_id: Optional[str]
+    account_id: Optional[int] = None
     check_in_status: CheckInStatus
     checked_in_at: Optional[datetime]
     has_device_token: bool = False
@@ -91,7 +99,7 @@ class AttendeeOut(BaseModel):
 
 
 class CheckInRequest(BaseModel):
-    attendee_id: int
+    attendee_id: int = Field(gt=0)
 
 
 class CheckInByEmailRequest(BaseModel):
@@ -99,12 +107,12 @@ class CheckInByEmailRequest(BaseModel):
 
 
 class DeviceTokenRegister(BaseModel):
-    fcm_token: str
+    fcm_token: str = Field(min_length=1, max_length=512)
     platform: Platform
 
 
 class NotifyAllRequest(BaseModel):
-    message: Optional[str] = None
+    message: Optional[str] = Field(default=None, max_length=1000)
 
 
 class NotifyAllResponse(BaseModel):
@@ -130,6 +138,46 @@ class QRResponse(BaseModel):
     qr_token: str
     qr_base64: str
     checkin_url: str
+
+
+class AttendeeAccountRegister(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    student_id: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=72)
+
+
+class AttendeeAccountLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=72)
+
+
+class AttendeeAccountOut(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    student_id: str
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class AdminCreateHost(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
+
+
+class AdminAccountStatus(BaseModel):
+    is_active: bool
+
+
+class AdminCoordinatorOut(CoordinatorOut):
+    event_count: int = 0
+
+
+class AdminStudentOut(AttendeeAccountOut):
+    event_count: int = 0
 
 
 class PersonalCheckInOut(BaseModel):

@@ -17,6 +17,10 @@ def build_attendee_checkin_url(qr_token: str) -> str:
     return build_checkin_url(qr_token, "qrevent://attendee")
 
 
+def build_account_qr_url(qr_token: str) -> str:
+    return build_checkin_url(qr_token, "qrevent://account")
+
+
 def generate_qr_base64(data: str) -> str:
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(data)

@@ -2,6 +2,10 @@
 .env.*
 !.env.example
 
+# Local databases and credentials
+*.db
+firebase-service-account.json
+
 .venv*/
 
 __pycache__/

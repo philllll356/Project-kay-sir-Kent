@@ -23,6 +23,11 @@ class Platform(str, enum.Enum):
     ios = "ios"
 
 
+class CoordinatorRole(str, enum.Enum):
+    admin = "admin"
+    host = "host"
+
+
 class Coordinator(Base):
     __tablename__ = "coordinators"
 
@@ -30,9 +35,28 @@ class Coordinator(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    role: Mapped[CoordinatorRole] = mapped_column(Enum(CoordinatorRole), default=CoordinatorRole.host, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     events: Mapped[list["Event"]] = relationship("Event", back_populates="coordinator")
+
+
+class AttendeeAccount(Base):
+    __tablename__ = "attendee_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    student_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    qr_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    event_memberships: Mapped[list["Attendee"]] = relationship("Attendee", back_populates="account")
 
 
 class Event(Base):
@@ -64,11 +88,13 @@ class Attendee(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     student_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("attendee_accounts.id"), nullable=True, index=True)
     qr_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     check_in_status: Mapped[CheckInStatus] = mapped_column(Enum(CheckInStatus), default=CheckInStatus.pending)
     checked_in_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     event: Mapped["Event"] = relationship("Event", back_populates="attendees")
+    account: Mapped[AttendeeAccount | None] = relationship("AttendeeAccount", back_populates="event_memberships")
     device_tokens: Mapped[list["DeviceToken"]] = relationship("DeviceToken", back_populates="attendee", cascade="all, delete-orphan")
 
 
