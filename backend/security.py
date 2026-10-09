@@ -60,5 +60,35 @@ def rate_limit_auth(request: Request) -> None:
 
 
 def allow_public_host_registration() -> bool:
-    default = os.getenv("APP_ENV", "development").lower() != "production"
-    return env_bool("ALLOW_PUBLIC_HOST_REGISTRATION", default)
+    # Instructor accounts should be provisioned by an administrator. Public
+    # registration must be explicitly enabled for a temporary local demo.
+    return env_bool("ALLOW_PUBLIC_HOST_REGISTRATION", False)
+
+
+def _csv_environment_value(name: str) -> list[str]:
+    return [value.strip() for value in os.getenv(name, "").split(",") if value.strip()]
+
+
+def validate_production_settings() -> None:
+    """Reject unsafe deployment settings before a production API starts."""
+    if os.getenv("APP_ENV", "development").strip().lower() != "production":
+        return
+
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    if jwt_secret == "dev-secret-change-in-production" or len(jwt_secret) < 32:
+        raise RuntimeError("JWT_SECRET must be a long random value in production")
+
+    cors_origins = _csv_environment_value("CORS_ORIGINS")
+    if not cors_origins or "*" in cors_origins:
+        raise RuntimeError("CORS_ORIGINS must explicitly list trusted production origins")
+
+    trusted_hosts = _csv_environment_value("TRUSTED_HOSTS")
+    if not trusted_hosts or "*" in trusted_hosts:
+        raise RuntimeError("TRUSTED_HOSTS must explicitly list trusted production hosts")
+
+    database_url = os.getenv("DATABASE_URL", "").strip().lower()
+    if not database_url or database_url.startswith("sqlite"):
+        raise RuntimeError("DATABASE_URL must use PostgreSQL in production")
+
+    if allow_public_host_registration():
+        raise RuntimeError("Public host registration must be disabled in production")

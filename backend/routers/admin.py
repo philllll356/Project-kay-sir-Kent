@@ -5,8 +5,17 @@ from backend.auth import hash_password, require_admin
 from backend.database import get_db
 from backend.models.db_models import AttendeeAccount, Coordinator, Event
 from backend.models.schemas import AdminAccountStatus, AdminCoordinatorOut, AdminCreateHost, AdminStudentOut
+from backend.services.notification_config import notification_status
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+@router.get("/notification-status")
+def get_notification_status(
+    _admin: Coordinator = Depends(require_admin),
+):
+    """Report provider readiness without returning credentials or file paths."""
+    return notification_status()
 
 
 @router.get("/coordinators", response_model=list[AdminCoordinatorOut])

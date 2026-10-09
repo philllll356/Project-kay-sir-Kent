@@ -9,6 +9,7 @@ import {
   AdminStudent,
   Coordinator,
   Event,
+  EventStatus,
   NotifyResponse,
   PersonalCheckIn,
   PublicEvent,
@@ -176,6 +177,15 @@ export async function getEvent(eventId: number): Promise<Event> {
   return data;
 }
 
+export async function updateEvent(eventId: number, input: { status?: EventStatus }): Promise<Event> {
+  const { data } = await client.patch<Event>(`/api/events/${eventId}`, input);
+  return data;
+}
+
+export async function deleteEvent(eventId: number): Promise<void> {
+  await client.delete(`/api/events/${eventId}`);
+}
+
 export async function listAttendees(eventId: number): Promise<Attendee[]> {
   const { data } = await client.get<Attendee[]>(`/api/events/${eventId}/attendees`);
   return data;
@@ -235,6 +245,13 @@ export async function checkInAccount(eventId: number, qrToken: string): Promise<
 
 export async function registerDevice(attendeeId: number, fcmToken: string, platform: "android" | "ios") {
   await client.post(`/api/checkin/register-device/${attendeeId}`, {
+    fcm_token: fcmToken,
+    platform,
+  });
+}
+
+export async function registerAttendeeDevice(fcmToken: string, platform: "android" | "ios") {
+  await client.post("/api/auth/attendee/device-token", {
     fcm_token: fcmToken,
     platform,
   });

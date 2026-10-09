@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from backend.auth import create_access_token, create_attendee_access_token, get_current_attendee, get_current_coordinator, hash_password, verify_password
 from backend.database import get_db
-from backend.models.db_models import Attendee, AttendeeAccount, Coordinator
-from backend.models.schemas import AttendeeAccountLogin, AttendeeAccountOut, AttendeeAccountRegister, CoordinatorLogin, CoordinatorOut, CoordinatorRegister, GoogleSignInRequest, QRResponse, TokenResponse
+from backend.models.db_models import AccountDeviceToken, Attendee, AttendeeAccount, Coordinator
+from backend.models.schemas import AttendeeAccountLogin, AttendeeAccountOut, AttendeeAccountRegister, CoordinatorLogin, CoordinatorOut, CoordinatorRegister, DeviceTokenRegister, GoogleSignInRequest, QRResponse, TokenResponse
 from backend.security import allow_public_host_registration, rate_limit_auth
 from backend.services.google_auth import verify_google_id_token
 from backend.services.qr_service import build_account_qr_url, generate_qr_base64, generate_qr_token
@@ -178,3 +178,28 @@ def attendee_qr(current: AttendeeAccount = Depends(get_current_attendee)):
         qr_base64=generate_qr_base64(checkin_url),
         checkin_url=checkin_url,
     )
+
+
+@router.post("/attendee/device-token")
+def register_attendee_device(
+    request: DeviceTokenRegister,
+    db: Session = Depends(get_db),
+    current: AttendeeAccount = Depends(get_current_attendee),
+):
+    """Register a student's own device for event notifications."""
+    device = db.query(AccountDeviceToken).filter(
+        AccountDeviceToken.account_id == current.id,
+        AccountDeviceToken.fcm_token == request.fcm_token,
+    ).first()
+    if device:
+        device.platform = request.platform
+        device.is_active = True
+    else:
+        db.add(AccountDeviceToken(
+            account_id=current.id,
+            fcm_token=request.fcm_token,
+            platform=request.platform,
+            is_active=True,
+        ))
+    db.commit()
+    return {"message": "Student device token registered successfully"}

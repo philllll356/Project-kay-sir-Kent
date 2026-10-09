@@ -45,7 +45,10 @@ def init_db():
     from backend.models import db_models  # noqa: F401
     from backend.services.qr_service import generate_qr_token
 
-    Base.metadata.create_all(bind=engine)
+    # New PostgreSQL tables are created by explicit schema migrations so the
+    # restricted runtime role does not need DDL privileges.
+    app_tables = [table for table in Base.metadata.tables.values() if table.name != "account_device_tokens"]
+    Base.metadata.create_all(bind=engine, tables=app_tables)
 
     # Add attendee QR tokens to legacy SQLite databases. PostgreSQL schemas
     # are created and changed through a real migration process; the runtime

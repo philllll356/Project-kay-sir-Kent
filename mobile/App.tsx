@@ -31,6 +31,7 @@ import {
   createAdminHost,
   createEvent,
   checkInPersonal,
+  deleteEvent,
   getAttendeeQR,
   getAttendeeAccountQR,
   getAttendeeMe,
@@ -51,12 +52,13 @@ import {
   logout,
   notifyAll,
   register,
+  registerAttendeeDevice,
   registerAttendee,
-  registerDevice,
+  updateEvent,
   setAdminCoordinatorStatus,
   setAdminStudentStatus,
 } from "./src/api";
-import { AdminCoordinator, AdminStudent, Attendee, AttendeeAccount, Event, PersonalCheckIn, PublicEvent, QRResponse } from "./src/types";
+import { AdminCoordinator, AdminStudent, Attendee, AttendeeAccount, Event, EventStatus, PersonalCheckIn, PublicEvent, QRResponse } from "./src/types";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -133,17 +135,25 @@ function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const googleConfigured = Boolean(googleWebClientId || googleAndroidClientId || googleIosClientId);
   const [googleRequest, , promptGoogle] = Google.useAuthRequest({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    // Expo AuthSession requires a client ID during hook initialization. Keep
+    // Google optional so missing OAuth configuration cannot blank the login screen.
+    webClientId: googleWebClientId || "google-not-configured",
+    androidClientId: googleAndroidClientId || "google-not-configured",
+    iosClientId: googleIosClientId || "google-not-configured",
     responseType: ResponseType.IdToken,
     scopes: ["openid", "profile", "email"],
   });
 
   async function submit() {
+    setAuthMessage(null);
     if (!email || !password || (mode === "register" && (!name || (accountType === "attendee" && !studentId)))) {
-      Alert.alert("Missing details", "Please complete all required fields.");
+      setAuthMessage("Please complete all required fields.");
       return;
     }
     setBusy(true);
@@ -163,15 +173,15 @@ function LoginScreen({ navigation }: any) {
         navigation.replace("AttendeeHome");
       }
     } catch (error) {
-      Alert.alert("Unable to continue", apiError(error));
+      setAuthMessage(apiError(error));
     } finally {
       setBusy(false);
     }
   }
 
   async function signInWithGoogle() {
-    if (!googleRequest) {
-      Alert.alert("Google Sign-In unavailable", "Add the Google client IDs to the mobile environment configuration first.");
+    if (!googleConfigured || !googleRequest) {
+      setAuthMessage("Google Sign-In is not configured yet. Use email and password.");
       return;
     }
     setBusy(true);
@@ -188,7 +198,7 @@ function LoginScreen({ navigation }: any) {
         navigation.replace("AttendeeHome");
       }
     } catch (error) {
-      Alert.alert("Google Sign-In failed", apiError(error));
+      setAuthMessage(apiError(error));
     } finally {
       setBusy(false);
     }
@@ -200,20 +210,21 @@ function LoginScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={styles.authContainer} keyboardShouldPersistTaps="handled">
           <Text style={styles.brand}>QR Event</Text>
           <View style={styles.accountToggle}>
-            <Pressable style={[styles.toggleOption, accountType === "host" && styles.toggleOptionActive]} onPress={() => { setAccountType("host"); setMode("login"); }}><Text style={styles.toggleText}>Host</Text></Pressable>
+            <Pressable style={[styles.toggleOption, accountType === "host" && styles.toggleOptionActive]} onPress={() => { setAccountType("host"); setMode("login"); }}><Text style={styles.toggleText}>Instructor</Text></Pressable>
             <Pressable style={[styles.toggleOption, accountType === "attendee" && styles.toggleOptionActive]} onPress={() => { setAccountType("attendee"); setMode("login"); }}><Text style={styles.toggleText}>Student</Text></Pressable>
           </View>
-          <Text style={styles.heroTitle}>{mode === "login" ? `${accountType === "host" ? "Host" : "Student"} login` : `Create ${accountType === "host" ? "a host" : "a student"} account`}</Text>
-          <Text style={styles.subtitle}>{accountType === "host" ? "Manage events, rosters, check-ins, and notifications." : "Keep your student QR code ready for event check-in."}</Text>
+          <Text style={styles.heroTitle}>{mode === "login" ? `${accountType === "host" ? "Instructor" : "Student"} login` : "Create a student account"}</Text>
+          <Text style={styles.subtitle}>{accountType === "host" ? "Instructor accounts are created by an administrator." : "Keep your student QR code ready for event check-in."}</Text>
+          {authMessage && <Text style={styles.authError}>{authMessage}</Text>}
           {mode === "register" && <Field label="Name" value={name} onChangeText={setName} placeholder="Your full name" />}
           {mode === "register" && accountType === "attendee" && <Field label="Student ID" value={studentId} onChangeText={setStudentId} placeholder="e.g. S2026-001" />}
           <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" />
           <Field label="Password" value={password} onChangeText={setPassword} placeholder="At least 8 characters" secureTextEntry />
           {busy ? <Loading /> : <Button title={mode === "login" ? "Log in" : "Register"} onPress={submit} />}
-          {mode === "login" && <Button title="Continue with Google" onPress={signInWithGoogle} secondary />}
-          <Pressable onPress={() => setMode(mode === "login" ? "register" : "login")}>
-            <Text style={styles.link}>{mode === "login" ? "Need an account? Register" : "Already registered? Log in"}</Text>
-          </Pressable>
+          {mode === "login" && googleConfigured && <Button title="Continue with Google" onPress={signInWithGoogle} secondary />}
+          {accountType === "attendee" && <Pressable onPress={() => setMode(mode === "login" ? "register" : "login")}>
+            <Text style={styles.link}>{mode === "login" ? "Need a student account? Register" : "Already registered? Log in"}</Text>
+          </Pressable>}
           <View style={styles.divider} />
           <Button title="Scan an event QR code" onPress={() => navigation.navigate("QRScanner")} secondary />
         </ScrollView>
@@ -305,6 +316,20 @@ function AttendeeHomeScreen({ navigation }: any) {
       .finally(() => setBusy(false));
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    (async () => {
+      try {
+        const permission = await Notifications.requestPermissionsAsync();
+        if (!permission.granted) return;
+        const token = await Notifications.getDevicePushTokenAsync();
+        await registerAttendeeDevice(token.data, Platform.OS === "ios" ? "ios" : "android");
+      } catch {
+        // Notification setup is optional; the student QR remains available.
+      }
+    })();
+  }, []);
+
   async function signOut() {
     await logout();
     navigation.replace("Login");
@@ -380,15 +405,34 @@ function EventsScreen({ navigation }: any) {
   );
 }
 
+function localDateTimeValue(date: Date): string {
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
 function CreateEventScreen({ navigation }: any) {
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
+  const [startTime, setStartTime] = useState(() => localDateTimeValue(new Date()));
+  const [endTime, setEndTime] = useState(() => localDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    setFormError(null);
     if (!title) {
-      Alert.alert("Missing title", "Enter an event title first.");
+      setFormError("Enter an event title first.");
+      return;
+    }
+    const start = new Date(startTime);
+    const end = endTime ? new Date(endTime) : null;
+    if (Number.isNaN(start.getTime())) {
+      setFormError("Enter a valid start date and time.");
+      return;
+    }
+    if (end && (Number.isNaN(end.getTime()) || end <= start)) {
+      setFormError("The end date and time must be after the start.");
       return;
     }
     setBusy(true);
@@ -397,11 +441,12 @@ function CreateEventScreen({ navigation }: any) {
         title,
         location: location || undefined,
         description: description || undefined,
-        start_time: new Date().toISOString(),
+        start_time: start.toISOString(),
+        end_time: end ? end.toISOString() : undefined,
       });
       navigation.replace("EventDetail", { eventId: event.id });
     } catch (error) {
-      Alert.alert("Could not create event", apiError(error));
+      setFormError(apiError(error));
     } finally {
       setBusy(false);
     }
@@ -411,10 +456,13 @@ function CreateEventScreen({ navigation }: any) {
     <Screen>
       <ScrollView contentContainerStyle={styles.formContainer}>
         <Text style={styles.screenTitle}>Create event</Text>
-        <Text style={styles.subtitle}>Start with the essentials. Date/time editing can be added next.</Text>
+        <Text style={styles.subtitle}>Set the event schedule, then publish it when ready.</Text>
+        {formError && <Text style={styles.authError}>{formError}</Text>}
         <Field label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Orientation Day" />
         <Field label="Location" value={location} onChangeText={setLocation} placeholder="e.g. Main Hall" />
         <Field label="Description" value={description} onChangeText={setDescription} placeholder="Optional details" />
+        <Field label="Start date and time" value={startTime} onChangeText={setStartTime} placeholder="YYYY-MM-DDTHH:mm" />
+        <Field label="End date and time" value={endTime} onChangeText={setEndTime} placeholder="YYYY-MM-DDTHH:mm" />
         {busy ? <Loading /> : <Button title="Create event" onPress={submit} />}
       </ScrollView>
     </Screen>
@@ -468,6 +516,41 @@ function EventDetailScreen({ route, navigation }: any) {
     }
   }
 
+  async function changeStatus(status: EventStatus) {
+    try {
+      setBusy(true);
+      await updateEvent(eventId, { status });
+      await load(false);
+    } catch (error) {
+      Alert.alert("Could not update event", apiError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeEvent() {
+    const confirmFn = (globalThis as { confirm?: (message: string) => boolean }).confirm;
+    const confirmed = Platform.OS === "web"
+      ? Boolean(confirmFn?.("Delete this event and its attendee list?"))
+      : await new Promise<boolean>((resolve) => Alert.alert(
+        "Delete event?",
+        "This will remove the event and its attendee list.",
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+        ],
+      ));
+    if (!confirmed) return;
+    try {
+      setBusy(true);
+      await deleteEvent(eventId);
+      navigation.replace("Events");
+    } catch (error) {
+      Alert.alert("Could not delete event", apiError(error));
+      setBusy(false);
+    }
+  }
+
   async function showAttendeeQR(attendee: Attendee) {
     try {
       setAttendeeQR({ attendee, qr: await getAttendeeQR(eventId, attendee.id) });
@@ -483,15 +566,22 @@ function EventDetailScreen({ route, navigation }: any) {
       <ScrollView contentContainerStyle={styles.formContainer}>
         <Text style={styles.screenTitle}>{event.title}</Text>
         <Text style={styles.subtitle}>{event.location || "No location"} · Live updates every 5 seconds</Text>
+        <Text style={styles.badge}>Status: {event.status}</Text>
+        <Text style={styles.muted}>Starts: {new Date(event.start_time).toLocaleString()}</Text>
+        {event.end_time && <Text style={styles.muted}>Ends: {new Date(event.end_time).toLocaleString()}</Text>}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryNumber}>{event.checked_in_count}/{event.attendee_count}</Text>
           <Text style={styles.muted}>checked in</Text>
         </View>
-        <View style={styles.actionRow}>
+        {event.status === "draft" && <Button title="Publish event" onPress={() => changeStatus("active")} />}
+        {event.status === "active" && <View style={styles.actionRow}>
           <Button title="Show event QR" onPress={showQR} />
           <Button title="Notify all" onPress={sendNotification} secondary />
-        </View>
-        <Button title="Scan student QR" onPress={() => navigation.navigate("QRScanner", { eventId })} secondary />
+        </View>}
+        {event.status === "active" && <Button title="Scan student QR" onPress={() => navigation.navigate("QRScanner", { eventId })} secondary />}
+        {event.status === "active" && <Button title="Complete event" onPress={() => changeStatus("completed")} secondary />}
+        {event.status === "draft" && <Text style={styles.subtitle}>Publish this event before allowing check-in.</Text>}
+        {event.status === "completed" && <Text style={styles.subtitle}>This event is completed. Check-in is closed.</Text>}
         <Button title="Add attendee" onPress={() => navigation.navigate("AddAttendee", { eventId })} secondary />
         {qr && <View style={styles.qrCard}><Image source={{ uri: `data:image/png;base64,${qr.qr_base64}` }} style={styles.qr} /><Text style={styles.muted}>Attendees scan this code to check in.</Text></View>}
         <Text style={styles.sectionTitle}>Attendees</Text>
@@ -503,6 +593,7 @@ function EventDetailScreen({ route, navigation }: any) {
         ))}
         {attendeeQR && <View style={styles.qrCard}><Text style={styles.cardTitle}>{attendeeQR.attendee.full_name}'s personal QR</Text><Image source={{ uri: `data:image/png;base64,${attendeeQR.qr.qr_base64}` }} style={styles.qr} /><Text style={styles.muted}>Show this code to the coordinator for check-in.</Text></View>}
         <Button title="Refresh" onPress={load} secondary />
+        <Button title="Delete event" onPress={removeEvent} secondary />
       </ScrollView>
     </Screen>
   );
@@ -623,15 +714,6 @@ function CheckInScreen({ route, navigation }: any) {
     if (!selected) return;
     try {
       const attendee = await checkIn(qrToken, selected.id);
-      try {
-        const permission = await Notifications.requestPermissionsAsync();
-        if (permission.granted) {
-          const token = await Notifications.getDevicePushTokenAsync();
-          await registerDevice(attendee.id, token.data, Platform.OS === "ios" ? "ios" : "android");
-        }
-      } catch {
-        // Notification setup is optional; check-in has already succeeded.
-      }
       Alert.alert("Checked in", `${attendee.full_name} is checked in.`);
       navigation.popToTop();
     } catch (error) {
@@ -646,7 +728,7 @@ function CheckInScreen({ route, navigation }: any) {
 }
 
 export default function App() {
-  const [initialRoute, setInitialRoute] = useState<"Login" | "Events" | "AttendeeHome" | null>(null);
+  const [initialRoute, setInitialRoute] = useState<"Login" | "Events" | "AdminHome" | "AttendeeHome" | null>(null);
 
   useEffect(() => {
     hasAccessToken().then(async (token) => {
@@ -673,6 +755,7 @@ const styles = StyleSheet.create({
   screenTitle: { color: colors.ink, fontSize: 26, fontWeight: "800" },
   sectionTitle: { color: colors.ink, fontSize: 20, fontWeight: "800", marginTop: 18 },
   subtitle: { color: colors.muted, fontSize: 15, lineHeight: 22, marginBottom: 16 },
+  authError: { backgroundColor: "#FEE4E2", borderColor: "#FDA29B", borderRadius: 10, borderWidth: 1, color: colors.danger, marginBottom: 14, padding: 12 },
   label: { color: colors.ink, fontSize: 13, fontWeight: "700", marginBottom: 6 },
   fieldGroup: { marginBottom: 4 },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 12, color: colors.ink, padding: 14, fontSize: 16 },

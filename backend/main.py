@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.auth import JWT_SECRET, hash_password
+from backend.auth import hash_password
 from backend.database import SessionLocal, get_db, init_db
 from backend.models.db_models import Coordinator, CoordinatorRole
 from backend.routers import auth as auth_router
@@ -19,17 +19,13 @@ from backend.routers import checkin as checkin_router
 from backend.routers import notifications as notifications_router
 from backend.routers import school as school_router
 from backend.routers import admin as admin_router
+from backend.security import validate_production_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database tables on startup."""
-    app_env = os.getenv("APP_ENV", "development").lower()
-    if app_env == "production":
-        if JWT_SECRET == "dev-secret-change-in-production" or len(JWT_SECRET) < 32:
-            raise RuntimeError("JWT_SECRET must be a long random value in production")
-        if os.getenv("CORS_ORIGINS", "").strip() in {"", "*"}:
-            raise RuntimeError("CORS_ORIGINS must explicitly list trusted production origins")
+    validate_production_settings()
     init_db()
     bootstrap_admin()
     yield

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.auth import get_current_coordinator, get_event_for_coordinator
+from backend.auth import get_current_coordinator, get_event_for_coordinator, require_active_event
 from backend.database import get_db
 from backend.models.db_models import Attendee, AttendeeAccount, CheckInStatus, Coordinator, DeviceToken
 from backend.models.schemas import AttendeeOut
@@ -28,7 +28,7 @@ def check_in_account(
     db: Session = Depends(get_db),
     current: Coordinator = Depends(get_current_coordinator),
 ):
-    event = get_event_for_coordinator(db, event_id, current)
+    event = require_active_event(get_event_for_coordinator(db, event_id, current))
     account = db.query(AttendeeAccount).filter(
         AttendeeAccount.qr_token == account_qr_token,
         AttendeeAccount.is_active.is_(True),

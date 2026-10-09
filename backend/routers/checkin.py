@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 
-from backend.auth import get_current_coordinator, get_event_for_coordinator
+from backend.auth import get_current_coordinator, get_event_for_coordinator, require_active_event
 from backend.database import get_db
 from backend.models.db_models import Event, Attendee, Coordinator, DeviceToken, CheckInStatus
 from backend.models.schemas import CheckInRequest, AttendeeOut, EventPublicOut, DeviceTokenRegister, PersonalCheckInOut
@@ -32,7 +32,7 @@ def get_event_by_qr(
     event = db.query(Event).filter(Event.qr_token == qr_token).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    get_event_for_coordinator(db, event.id, current)
+    require_active_event(get_event_for_coordinator(db, event.id, current))
     
     attendees_out = []
     for attendee in event.attendees:
@@ -56,7 +56,7 @@ def get_attendee_by_qr(
     attendee = db.query(Attendee).filter(Attendee.qr_token == attendee_qr_token).first()
     if not attendee:
         raise HTTPException(status_code=404, detail="Attendee QR code not found")
-    get_event_for_coordinator(db, attendee.event_id, current)
+    require_active_event(get_event_for_coordinator(db, attendee.event_id, current))
     return PersonalCheckInOut(
         event_id=attendee.event_id,
         event_title=attendee.event.title,
@@ -74,7 +74,7 @@ def check_in_attendee(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
         
-    get_event_for_coordinator(db, event.id, current)
+    require_active_event(get_event_for_coordinator(db, event.id, current))
     attendee = db.query(Attendee).filter(
         Attendee.id == request.attendee_id, 
         Attendee.event_id == event.id
@@ -114,7 +114,7 @@ def check_in_attendee_by_qr(
     attendee = db.query(Attendee).filter(Attendee.qr_token == attendee_qr_token).with_for_update().first()
     if not attendee:
         raise HTTPException(status_code=404, detail="Attendee QR code not found")
-    get_event_for_coordinator(db, attendee.event_id, current)
+    require_active_event(get_event_for_coordinator(db, attendee.event_id, current))
     if attendee.check_in_status == CheckInStatus.checked_in:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Attendee already checked in")
 

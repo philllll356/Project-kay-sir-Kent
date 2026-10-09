@@ -59,6 +59,18 @@ class AttendeeAccount(Base):
     event_memberships: Mapped[list["Attendee"]] = relationship("Attendee", back_populates="account")
 
 
+class AccountDeviceToken(Base):
+    __tablename__ = "account_device_tokens"
+    __table_args__ = (UniqueConstraint("account_id", "fcm_token", name="uq_account_device_token"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("attendee_accounts.id"), nullable=False, index=True)
+    fcm_token: Mapped[str] = mapped_column(String(512), nullable=False)
+    platform: Mapped[Platform] = mapped_column(Enum(Platform), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    registered_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Event(Base):
     __tablename__ = "events"
 
@@ -75,7 +87,11 @@ class Event(Base):
 
     coordinator: Mapped["Coordinator"] = relationship("Coordinator", back_populates="events")
     attendees: Mapped[list["Attendee"]] = relationship("Attendee", back_populates="event", cascade="all, delete-orphan")
-    notification_logs: Mapped[list["NotificationLog"]] = relationship("NotificationLog", back_populates="event")
+    notification_logs: Mapped[list["NotificationLog"]] = relationship(
+        "NotificationLog",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
 
 class Attendee(Base):

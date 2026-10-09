@@ -72,13 +72,13 @@ The API is available at:
 - Swagger UI: <http://127.0.0.1:8000/docs>
 - OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
 
-For a real deployment, set `APP_ENV=production`, use a long random `JWT_SECRET`, configure `DATABASE_URL` with a managed PostgreSQL database, and set `CORS_ORIGINS` to the exact web origins that should access the API. The included `Dockerfile` runs the backend on port `8000`; deploy it behind HTTPS and point the mobile build's `EXPO_PUBLIC_API_URL` at the HTTPS API URL.
+For a real deployment, set `APP_ENV=production`, use a long random `JWT_SECRET`, configure `DATABASE_URL` with PostgreSQL (SQLite is rejected in production), set `CORS_ORIGINS` and `TRUSTED_HOSTS` to explicit allow-lists, and keep `ALLOW_PUBLIC_HOST_REGISTRATION=false`. The backend refuses to start if these production checks are unsafe. Deploy it behind HTTPS and point the mobile build's `EXPO_PUBLIC_API_URL` at the HTTPS API URL. The included `Dockerfile` listens on port `8000` inside the deployment environment.
 
 The host event screen refreshes attendance automatically every five seconds, so check-ins from another phone appear without manually pressing Refresh.
 
 ## Admin Center
 
-Set `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME` before starting the backend to create or promote the first administrator. The administrator can then use the **Admin Center** to create host accounts, activate/deactivate hosts and students, and review account event counts. Public host registration remains available for development; for a school rollout, use the Admin Center to provision host accounts.
+Set `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME` before starting the backend to create or promote the first administrator. The administrator can then use the **Admin Center** to create host accounts, activate/deactivate hosts and students, and review account event counts. Public host registration is disabled by default; only enable `ALLOW_PUBLIC_HOST_REGISTRATION=true` for a temporary local demo. For a school rollout, use the Admin Center to provision host accounts.
 
 Use `127.0.0.1` or `localhost` in a browser. `0.0.0.0` is a server bind address, not a browser address.
 
@@ -152,6 +152,7 @@ All coordinator management endpoints require a JWT bearer token. Full request an
 | Check-in | `GET` | `/api/checkin/attendee/{attendee_qr_token}` | Look up a personal QR |
 | Check-in | `POST` | `/api/checkin/attendee/{attendee_qr_token}` | Check in that attendee |
 | Notifications | `POST` | `/api/events/{event_id}/notify-all` | Notify event attendees |
+| Admin | `GET` | `/api/admin/notification-status` | Check Firebase/SMTP readiness without exposing secrets |
 | Reports | `GET` | `/api/events/{event_id}/report` | Get attendance summary |
 
 ## Database
@@ -181,6 +182,19 @@ $env:POSTGRES_URL = "postgresql+psycopg://postgres:<password>@127.0.0.1:5432/qre
 The migration refuses to merge into a PostgreSQL database that already has
 application data, preserves IDs, and validates foreign-key references.
 
+When applying the student notification-token schema to PostgreSQL, run the
+explicit migration with a schema-owner connection. The restricted
+`qrevent_app` runtime role intentionally cannot create tables:
+
+```powershell
+$env:SCHEMA_DATABASE_URL = "postgresql+psycopg://<schema-owner>:<password>@127.0.0.1:5432/qrevent"
+.\.venv\Scripts\python.exe -m scripts.migrate_account_device_tokens
+```
+
+Do not put the schema-owner connection string in `.env` or commit it. The
+mobile app registers a student's device token after this migration is applied;
+the host check-in screen no longer registers its own device as the student.
+
 ## Security baseline
 
 - Check-in changes and roster lookups require an authenticated host or administrator.
@@ -189,6 +203,8 @@ application data, preserves IDs, and validates foreign-key references.
 - Passwords are bcrypt-hashed, JWTs include issuer/audience validation, and request payloads are bounded.
 - The running application uses the restricted `qrevent_app` PostgreSQL role rather than the database administrator.
 - In production, set a strong `JWT_SECRET`, explicit `CORS_ORIGINS`, `TRUSTED_HOSTS`, and `ALLOW_PUBLIC_HOST_REGISTRATION=false`.
+- Production startup rejects weak JWT secrets, wildcard or missing CORS/trusted-host lists, SQLite, and public host registration.
+- Rotating `JWT_SECRET` invalidates existing access tokens, requiring users to sign in again.
 
 ## Google Sign-In
 
@@ -214,6 +230,13 @@ SMTP_FROM=your-email@gmail.com
 
 Do not commit `.env`, Firebase service-account files, SMTP passwords, or other credentials.
 
+Administrators can check whether either provider is configured through
+`GET /api/admin/notification-status`. The endpoint returns only boolean status
+fields and never returns credentials or the Firebase file path. Automated tests
+use fake configuration checks and never send real messages; perform one
+controlled delivery test after configuring a staging Firebase project and SMTP
+account.
+
 ## Verification commands
 
 Run these checks before pushing changes:
@@ -233,6 +256,24 @@ cd ..
 # Check for whitespace errors in the pending Git diff
 git diff --check
 ```
+
+The API regression suite uses PostgreSQL only and refuses to run against the
+application database. Create a separate database whose name includes `test`,
+then set its connection string in `TEST_DATABASE_URL` before running:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql+psycopg://<test-user>:<password>@127.0.0.1:5432/qrevent_test"
+.\.venv\Scripts\python.exe scripts\test_api_regression.py
+```
+
+The test runner clears and recreates only that dedicated test database. It will
+not run when `TEST_DATABASE_URL` is missing, points to SQLite, or matches the
+real `DATABASE_URL`. CI starts an isolated PostgreSQL service automatically.
+
+These checks also run automatically through GitHub Actions on pushes to `main`
+and on pull requests targeting `main`. The workflow is stored in
+`.github/workflows/ci.yml`. It verifies backend imports and compilation, mobile
+dependencies and TypeScript, the Expo web export, and Git whitespace errors.
 
 ## Common problems
 

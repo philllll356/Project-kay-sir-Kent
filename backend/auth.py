@@ -9,7 +9,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models.db_models import AttendeeAccount, Coordinator, CoordinatorRole
+from backend.models.db_models import AttendeeAccount, Coordinator, CoordinatorRole, Event, EventStatus
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
@@ -133,14 +133,21 @@ def get_current_attendee(
 
 
 def get_event_for_coordinator(db: Session, event_id: int, coordinator: Coordinator):
-    from backend.models.db_models import Event
-
     query = db.query(Event).filter(Event.id == event_id)
     if coordinator.role != CoordinatorRole.admin:
         query = query.filter(Event.coordinator_id == coordinator.id)
     event = query.first()
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    return event
+
+
+def require_active_event(event: Event) -> Event:
+    if event.status != EventStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This event is not active for check-in.",
+        )
     return event
 
 

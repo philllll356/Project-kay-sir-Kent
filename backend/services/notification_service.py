@@ -5,6 +5,8 @@ from typing import Optional
 import aiosmtplib
 from email.message import EmailMessage
 
+from backend.services.notification_config import firebase_configured, smtp_configured
+
 logger = logging.getLogger(__name__)
 
 _firebase_app = None
@@ -16,7 +18,7 @@ def _get_firebase_app():
         return _firebase_app
 
     cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-    if not cred_path or not os.path.exists(cred_path):
+    if not firebase_configured():
         return None
 
     try:
@@ -97,7 +99,7 @@ async def send_email_notification(to_email: str, subject: str, body: str) -> boo
     smtp_from = os.getenv("SMTP_FROM", smtp_user)
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
 
-    if not all([smtp_host, smtp_user, smtp_password, smtp_from]):
+    if not smtp_configured():
         logger.info("SMTP not configured; skipping email to %s", to_email)
         return False
 
@@ -136,7 +138,7 @@ async def send_email_batch(recipients: list[tuple[str, str, str]]) -> int:
     smtp_from = os.getenv("SMTP_FROM", smtp_user)
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
 
-    if not all([smtp_host, smtp_user, smtp_password, smtp_from]) or not recipients:
+    if not smtp_configured() or not recipients:
         return 0
 
     success_count = 0

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth import get_current_coordinator, get_event_for_coordinator
 from backend.database import get_db
-from backend.models.db_models import Coordinator, Attendee, DeviceToken, NotificationLog, CheckInStatus
+from backend.models.db_models import AccountDeviceToken, Coordinator, Attendee, DeviceToken, NotificationLog, CheckInStatus
 from backend.models.schemas import NotifyAllRequest, NotifyAllResponse, NotificationLogOut, AttendanceReport, AttendeeOut
 from backend.services.notification_service import send_push_batch, send_email_batch, default_notify_message
 
@@ -51,7 +51,7 @@ async def notify_all(
     # --- Collect recipients ---
     attendees = db.query(Attendee).filter(Attendee.event_id == event.id).all()
 
-    # Get all active FCM tokens for these attendees
+    # Get active legacy attendee tokens for guest/older registrations.
     fcm_tokens = []
     attendee_ids_with_tokens = set()
     if attendees:
@@ -67,10 +67,26 @@ async def notify_all(
             fcm_tokens.append(dt.fcm_token)
             attendee_ids_with_tokens.add(dt.attendee_id)
 
+    # Get active tokens registered by the student account itself.
+    account_ids = {a.account_id for a in attendees if a.account_id is not None}
+    account_ids_with_tokens = set()
+    if account_ids:
+        account_tokens = (
+            db.query(AccountDeviceToken)
+            .filter(
+                AccountDeviceToken.account_id.in_(account_ids),
+                AccountDeviceToken.is_active.is_(True),
+            )
+            .all()
+        )
+        for token in account_tokens:
+            fcm_tokens.append(token.fcm_token)
+            account_ids_with_tokens.add(token.account_id)
+
     # Email fallback: attendees without device tokens who have email
     email_recipients = []
     for a in attendees:
-        if a.id not in attendee_ids_with_tokens and a.email:
+        if a.id not in attendee_ids_with_tokens and a.account_id not in account_ids_with_tokens and a.email:
             email_recipients.append((a.email, f"Event: {event.title}", message))
 
     # --- Send notifications ---
